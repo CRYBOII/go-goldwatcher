@@ -1,0 +1,103 @@
+package main
+
+import (
+	"database/sql"
+	"log"
+	"net/http"
+	"os"
+
+	"goldwatcher/repository"
+
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/widget"
+	_ "github.com/glebarez/go-sqlite"
+)
+
+type Config struct {
+	App                            fyne.App
+	InfoLog                        *log.Logger
+	Errorlog                       *log.Logger
+	DB                             repository.Repository
+	MainWindow                     fyne.Window
+	PriceContainer                 *fyne.Container
+	ToolBar                        *widget.Toolbar
+	PriceChartContainer            *fyne.Container
+	Holdings                       [][]interface{}
+	HoldingsTable                  *widget.Table
+	HTTPClient                     *http.Client
+	AddHoldingsPurChaseAmountEntry *widget.Entry
+	AddHoldingsPurChaseDateEntry   *widget.Entry
+	AddHoldingsPurChasePriceEntry  *widget.Entry
+}
+
+var myApp Config
+
+func main() {
+	// create a fyne application
+
+	fyneApp := app.NewWithID("ca.gocode.golwatcher.preferences")
+	myApp.App = fyneApp
+	myApp.HTTPClient = &http.Client{}
+
+	//create our logger
+
+	myApp.InfoLog = log.New(os.Stdout, "INFO \t ", log.Ldate|log.Ltime)
+	myApp.Errorlog = log.New(os.Stdout, "ERROR \t", log.Ldate|log.Ltime|log.Lshortfile)
+
+	// open a connection to the database sqlite
+
+	sqlDB, err := myApp.connectSQL()
+	if err != nil {
+		log.Panic(err)
+	}
+
+	// create a database repository
+	myApp.setupDB(sqlDB)
+
+	currency = fyneApp.Preferences().StringWithFallback("currency", "CAD")
+
+	// create a database repository
+
+	// create and size a fyne window
+
+	myApp.MainWindow = fyneApp.NewWindow("Golwatcher Preferences")
+	myApp.MainWindow.Resize(fyne.NewSize(770, 410))
+	myApp.MainWindow.SetFixedSize(true)
+	myApp.MainWindow.SetMaster()
+
+	myApp.makeUI()
+
+	// show and run the application
+
+	myApp.MainWindow.ShowAndRun()
+
+}
+
+func (app *Config) connectSQL() (*sql.DB, error) {
+	path := ""
+
+	if os.Getenv("DB_PATH") != "" {
+		path = os.Getenv("DB_PATH")
+	} else {
+		path = app.App.Storage().RootURI().Path() + "/sql.db"
+		app.InfoLog.Println("db in:", path)
+	}
+
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return nil, err
+	}
+
+	return db, nil
+}
+
+func (app *Config) setupDB(sqlDB *sql.DB) {
+	app.DB = repository.NewSQLiteRepository(sqlDB)
+
+	err := app.DB.Migrate()
+	if err != nil {
+		app.Errorlog.Println(err)
+		log.Panic()
+	}
+}
